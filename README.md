@@ -4,6 +4,6 @@
 
 ## Team Members
 
-Dustin Nguyen, Shane O'Donnell, Quinn Johnson
+Farida Shittu & Shane O'Donnell
 
 
