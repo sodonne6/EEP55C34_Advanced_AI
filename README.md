@@ -1,6 +1,6 @@
 # EEP55C34 Advanced AI
 
-﻿## Group Project - INSERT SCOPE HERE
+## (Insert Scope Here) - Group Project
 
 ## Team Members
 
