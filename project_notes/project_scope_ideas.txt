@@ -5,11 +5,12 @@ Base Model - Whisper
 2. Visual Question & Answer Model
 Dataset - 
 
-Sign Language LLM
+3. Sign Language LLM
 Dataset - https://www.microsoft.com/en-us/download/details.aspx?id=100121
 - https://www.kaggle.com/datasets/iamavinashkr090502/asl-hand-landmark-and-gesture-dataset
-https://how2sign.github.io/?utm_source=chatgpt.com
+https://how2sign.github.io
 Coverage - Sign in prompts in ASL and send to LLM - LLM returns in text form
 Scope - Computer Vision and LLM model
+
 
 
