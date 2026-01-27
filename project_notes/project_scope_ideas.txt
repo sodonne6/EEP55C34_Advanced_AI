@@ -12,5 +12,7 @@ https://how2sign.github.io
 Coverage - Sign in prompts in ASL and send to LLM - LLM returns in text form
 Scope - Computer Vision and LLM model
 
+4. Voice to voice translation ( this is similar to 1.) 
+Dataset - 
 
-
+5. Recomendation model (e.g Movies, clothes, travel)
