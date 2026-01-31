@@ -1,0 +1,18 @@
+dataset:
+  pickle_path:
+    train: "C:/Users/irish/Computer_Electronic_Engineering_Year5/semester_2/Advanced_AI/project/SLT/data_test/how2sign_holistic/pickles/train.pkl.gz"
+    dev:   "C:/Users/irish/Computer_Electronic_Engineering_Year5/semester_2/Advanced_AI/project/SLT/data_test/how2sign_holistic/pickles/dev.pkl.gz"
+
+model:
+  pretrained_model_name: "bert-base-uncased"
+  input_dim: 1629
+
+training_args:
+  output_dir: "./runs/smoke"
+  overwrite_output_dir: true
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  learning_rate: 5.0e-4
+  max_steps: 10
+  logging_steps: 1
+  remove_unused_columns: false

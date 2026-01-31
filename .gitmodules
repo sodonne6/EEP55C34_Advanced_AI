@@ -1,0 +1,3 @@
+[submodule "SLT/model/transformer-dgs-phoenix14t"]
+	path = SLT/model/transformer-dgs-phoenix14t
+	url = https://huggingface.co/Shakibyzn/transformer-dgs-phoenix14t

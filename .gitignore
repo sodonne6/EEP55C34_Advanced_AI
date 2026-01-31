@@ -1,0 +1,34 @@
+@'
+# --- SLT external repos / downloads ---
+#SLT/model/transformer-dgs-phoenix14t/
+
+# --- Hugging Face cache (local) ---
+.hf/
+.cache/
+**/.cache/
+
+# --- Local SLT test data (local) ---
+SLT/data_test/
+
+# --- Large artifacts ---
+**/*.safetensors
+**/*.pt
+**/*.pth
+**/*.ckpt
+
+# --- Datasets / features (local) ---
+data/
+datasets/
+features/
+runs/
+outputs/
+
+# --- Python junk ---
+__pycache__/
+*.pyc
+.venv/
+'@ | Out-File -Append -Encoding utf8 .gitignore
+
+# --- Allow the submodule folder itself to be tracked ---
+!SLT/model/
+!SLT/model/transformer-dgs-phoenix14t/
