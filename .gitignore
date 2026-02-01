@@ -1,4 +1,4 @@
-@'
+
 # --- SLT external repos / downloads ---
 #SLT/model/transformer-dgs-phoenix14t/
 
@@ -27,8 +27,12 @@ outputs/
 __pycache__/
 *.pyc
 .venv/
-'@ | Out-File -Append -Encoding utf8 .gitignore
 
 # --- Allow the submodule folder itself to be tracked ---
 !SLT/model/
 !SLT/model/transformer-dgs-phoenix14t/
+
+#keep the folder but ignore all generated artifacts
+TTS/outputs/*
+!TTS/outputs/
+!TTS/outputs/.gitkeep
