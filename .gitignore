@@ -32,6 +32,15 @@ __pycache__/
 !SLT/model/
 !SLT/model/transformer-dgs-phoenix14t/
 
+# --- Local caches ---
+.hf/
+**/.hf/
+.cache/
+**/.cache/
+
+# --- SLT external repos (we'll add i3d as a submodule OR ignore it) ---
+SLT/external/pytorch-i3d/
+
 #keep the folder but ignore all generated artifacts
 TTS/outputs/*
 !TTS/outputs/

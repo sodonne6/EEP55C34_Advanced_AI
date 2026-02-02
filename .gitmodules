@@ -1,3 +1,6 @@
 [submodule "SLT/model/transformer-dgs-phoenix14t"]
 	path = SLT/model/transformer-dgs-phoenix14t
 	url = https://huggingface.co/Shakibyzn/transformer-dgs-phoenix14t
+[submodule "SLT/external/pytorch-i3d"]
+	path = SLT/external/pytorch-i3d
+	url = https://github.com/piergiaj/pytorch-i3d

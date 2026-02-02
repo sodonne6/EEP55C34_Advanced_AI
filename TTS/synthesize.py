@@ -30,7 +30,7 @@ def main():
     speaker_embedding = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
 
     #this can be changed to any text - in the future this is how we can load text from the SLT model output
-    text = "Hello. This is a SpeechT5 text to speech test."
+    text = "Testing speechT5 base model please work"
     out = synthesiser(text, forward_params={"speaker_embeddings": speaker_embedding})
 
     sf.write(OUT_WAV, out["audio"], samplerate=out["sampling_rate"])

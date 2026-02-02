@@ -1,5 +1,5 @@
 torch
 transformers
-datasets[audio]
+datasets[audio]<4
 soundfile
 accelerate
