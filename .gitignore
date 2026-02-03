@@ -2,10 +2,7 @@
 # --- SLT external repos / downloads ---
 #SLT/model/transformer-dgs-phoenix14t/
 
-# --- Hugging Face cache (local) ---
-.hf/
-.cache/
-**/.cache/
+
 
 # --- Local SLT test data (local) ---
 SLT/data_test/
@@ -39,7 +36,12 @@ __pycache__/
 **/.cache/
 
 # --- SLT external repos (we'll add i3d as a submodule OR ignore it) ---
-SLT/external/pytorch-i3d/
+# --- SLT external repos ---
+SLT/external/*
+
+# But allow specific submodule folders to be tracked
+!SLT/external/
+!SLT/external/pytorch-i3d/
 
 #keep the folder but ignore all generated artifacts
 TTS/outputs/*

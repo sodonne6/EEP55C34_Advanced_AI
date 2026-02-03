@@ -59,82 +59,77 @@ class SLTModel(PreTrainedModel):
         self.output_head = nn.Linear(config.d_model, config.vocab_size)
 
         self.init_weights()
-
+        
+    @staticmethod
+    def shift_tokens_right(labels, pad_token_id: int, bos_token_id: int):
+        # labels: [B, L]
+        shifted = labels.new_full(labels.shape, pad_token_id)
+        shifted[:, 1:] = labels[:, :-1].clone()
+        shifted[:, 0] = bos_token_id
+        return shifted
+    
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             module.weight.data.normal_(mean=0.0, std=0.02)
         elif isinstance(module, nn.Embedding):
             module.weight.data.normal_(mean=0.0, std=0.02)
 
-    def forward(
-        self, input_values, attention_mask=None, labels=None, decoder_input_ids=None
-    ):
-        """
-        input_values: [batch, src_len, input_dim] (Sign features)
-        attention_mask: [batch, src_len] (1 for valid, 0 for pad)
-        labels: [batch, tgt_len] (Target token IDs)
-        """
+    def forward(self, input_values, attention_mask=None, labels=None, decoder_input_ids=None):
         device = input_values.device
 
         # Project features
-        src = self.feature_projection(input_values)  # [batch, src_len, d_model]
+        src = self.feature_projection(input_values)  # [B, S, d_model]
         src = self.pos_encoder(src)
 
-        # Prepare Decoder Input
-        if decoder_input_ids is None and labels is not None:
-            # Shift labels right: [BOS, A, B, C] -> Predict [A, B, C, EOS]
-            # Standard generic shift for training
-            decoder_input_ids = labels.clone()
-            # In a real scenario, you usually shift manually in collator or here
-            # For simplicity, we assume collator handled standard shifting or we do it here:
-            # Shift right logic:
-            decoder_start_token_id = self.config.bos_token_id
-            decoder_input_ids = torch.cat(
-                [
-                    torch.full(
-                        (decoder_input_ids.shape[0], 1),
-                        decoder_start_token_id,
-                        device=device,
-                    ),
-                    decoder_input_ids[:, :-1],
-                ],
-                dim=1,
-            )
-            # Replace -100 with pad token for embedding lookups
-            decoder_input_ids.masked_fill_(
-                decoder_input_ids == -100, self.config.pad_token_id
-            )
-
-        tgt = self.embed_tgt(decoder_input_ids)
-        tgt = self.pos_decoder(tgt)
-
-        # Create Masks
-        # Src Mask (padding): [batch, src_len] -> Bool [batch, src_len] (True = ignore)
+        # Src padding mask for encoder + decoder cross-attn
         if attention_mask is not None:
-            src_key_padding_mask = attention_mask == 0
+            src_key_padding_mask = (attention_mask == 0)  # True=pad
         else:
             src_key_padding_mask = None
 
-        # Tgt Mask (causal): [tgt_len, tgt_len]
+        # ---- Prepare Decoder Input (FIXED) ----
+        if decoder_input_ids is None:
+            if labels is None:
+                raise ValueError("Either labels or decoder_input_ids must be provided.")
+
+            # IMPORTANT: replace -100 BEFORE shifting
+            labels_for_shift = labels.clone()
+            labels_for_shift[labels_for_shift == -100] = self.config.pad_token_id
+
+            decoder_input_ids = self.shift_tokens_right(
+                labels_for_shift,
+                pad_token_id=self.config.pad_token_id,
+                bos_token_id=self.config.bos_token_id,
+            )
+
+        decoder_input_ids = decoder_input_ids.long()
+
+        # Decoder padding mask (True=pad)
+        tgt_key_padding_mask = (decoder_input_ids == self.config.pad_token_id)
+
+        # Embed + positional encoding
+        tgt = self.embed_tgt(decoder_input_ids)
+        tgt = self.pos_decoder(tgt)
+
+        # Causal mask
         tgt_len = tgt.size(1)
         tgt_mask = self.transformer.generate_square_subsequent_mask(tgt_len).to(device)
 
-        # Transformer Pass
+        # ---- Transformer Pass (FIXED MASKS) ----
         outs = self.transformer(
             src=src,
             tgt=tgt,
-            src_key_padding_mask=src_key_padding_mask,
             tgt_mask=tgt_mask,
+            src_key_padding_mask=src_key_padding_mask,
+            tgt_key_padding_mask=tgt_key_padding_mask,
+            memory_key_padding_mask=src_key_padding_mask,  # IMPORTANT
         )
 
-        logits = self.output_head(outs)  # [batch, tgt_len, vocab_size]
+        logits = self.output_head(outs)  # [B, T, vocab]
 
         loss = None
         if labels is not None:
             loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
             loss = loss_fct(logits.view(-1, self.config.vocab_size), labels.view(-1))
 
-        return Seq2SeqLMOutput(
-            loss=loss,
-            logits=logits,
-        )
+        return Seq2SeqLMOutput(loss=loss, logits=logits)

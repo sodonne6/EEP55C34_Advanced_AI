@@ -8,6 +8,8 @@ This model intends to convert Continious ASL to Synthesised Speech
 
 ASL video -> vision encoder -> text -> speech synthesis model -> speech
 
+![Architecture Diagram](https://github.com/sodonne6/EEP55C34_Advanced_AI/blob/main/project_notes/architecture.png?raw=1)
+
 ## Pre Trained Models
 
 ## Datasets
