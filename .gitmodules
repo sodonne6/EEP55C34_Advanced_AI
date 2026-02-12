@@ -4,3 +4,6 @@
 [submodule "SLT/external/pytorch-i3d"]
 	path = SLT/external/pytorch-i3d
 	url = https://github.com/piergiaj/pytorch-i3d
+[submodule "SLT/external/signformer_gcn"]
+	path = SLT/external/signformer_gcn
+	url = https://github.com/rabeya-akter/SignLanguageTranslation.git

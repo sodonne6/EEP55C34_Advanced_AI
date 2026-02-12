@@ -29,19 +29,25 @@ __pycache__/
 !SLT/model/
 !SLT/model/transformer-dgs-phoenix14t/
 
+*.drawio
+
 # --- Local caches ---
 .hf/
 **/.hf/
 .cache/
 **/.cache/
 
-# --- SLT external repos (we'll add i3d as a submodule OR ignore it) ---
 # --- SLT external repos ---
 SLT/external/*
-
-# But allow specific submodule folders to be tracked
 !SLT/external/
+
+# allow specific submodules
+!SLT/external/signformer_gcn
+!SLT/external/signformer_gcn/**
+
 !SLT/external/pytorch-i3d/
+!SLT/external/pytorch-i3d/**
+
 
 #keep the folder but ignore all generated artifacts
 TTS/outputs/*
