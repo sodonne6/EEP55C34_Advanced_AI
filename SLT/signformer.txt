@@ -1,0 +1,33 @@
+# Core runtime
+numpy==1.26.4
+pandas==2.2.2
+tqdm
+pyyaml
+
+# Fairseq / hydra stack
+omegaconf
+hydra-core
+
+# Tokenization + metrics
+sentencepiece
+sacrebleu
+sacremoses
+
+# Logging
+tensorboard
+tensorboardX
+
+# Fork-specific deps we hit
+bitarray
+pose-format
+truecase
+ipython
+jedi
+
+# Common extras that often get pulled in / needed later
+einops
+scipy
+soundfile
+nltk
+msgpack
+pyarrow
