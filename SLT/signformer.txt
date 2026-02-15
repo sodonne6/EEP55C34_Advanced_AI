@@ -1,33 +1,44 @@
-# Core runtime (py3.8-compatible pins for Colab env)
-#numpy==1.22.4
-#pandas==1.4.3
+# ---------- Core ----------
 tqdm
 pyyaml
-
-# Fairseq / hydra stack
-omegaconf
-hydra-core
-
-# Tokenization + metrics
-sentencepiece
-sacrebleu
-sacremoses
-
-# Logging
-tensorboard
-tensorboardX
-
-# Fork-specific deps we hit
-bitarray
-pose-format
-truecase
-ipython
-jedi
-
-# Common extras that often get pulled in / needed later
 einops
 scipy
 soundfile
 nltk
 msgpack
 pyarrow
+
+# Keep numpy compatible with mediapipe + py3.8 env
+numpy==1.24.4
+
+# (optional but recommended for TSV builder / manifests)
+pandas
+
+# ---------- Fairseq / Hydra stack ----------
+hydra-core==1.1.0
+omegaconf==2.1.2
+
+# ---------- Tokenization + metrics ----------
+sentencepiece
+sacrebleu
+sacremoses
+
+# ---------- Logging ----------
+tensorboard
+tensorboardX
+wandb==0.12.21
+
+# ---------- Fork-specific deps ----------
+bitarray
+pose-format
+truecase
+ipython
+jedi
+
+# ---------- MediaPipe landmine pins (DO NOT UPGRADE protobuf) ----------
+mediapipe==0.10.11
+protobuf==3.20.1
+opencv-contrib-python==4.13.0.92
+matplotlib==3.7.5
+flatbuffers
+attrs

@@ -1,0 +1,317 @@
+import pdb
+import math
+import logging
+from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+
+from omegaconf import II
+
+import torch
+import torch.nn as nn
+from torch import Tensor
+
+from pose_format import Pose
+
+from fairseq import checkpoint_utils, utils
+
+from fairseq.data.data_utils import lengths_to_padding_mask
+from fairseq.data.sign_language import SignFeatsType
+
+from fairseq.dataclass import FairseqDataclass
+from fairseq.dataclass.constants import ChoiceEnum
+
+from fairseq.models.sign_to_text.sgcn_lstm import Sgcn_Lstm   # fariya
+from fairseq.models.sign_to_text.dim_reduction import (
+    DimensionReductionLayerLinear,
+    DimensionReductionLayerLSTM,
+)  # fariya
+
+from fairseq.models import (
+    FairseqEncoder,
+    FairseqEncoderDecoderModel,
+    register_model,
+)
+
+from fairseq.models.transformer import Embedding, TransformerDecoder
+
+from fairseq.modules import (
+    FairseqDropout,
+    LayerNorm,
+    PositionalEmbedding,
+    TransformerEncoderLayer,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Sign2TextTransformerConfig(FairseqDataclass):
+    """Add model-specific arguments to the parser."""
+    activation_fn: ChoiceEnum(utils.get_available_activation_fns()) = field(
+        default="relu", metadata={"help": "activation function to use"}
+    )
+    dropout: float = field(default=0.1, metadata={"help": "dropout probability"})
+    attention_dropout: float = field(
+        default=0.1, metadata={"help": "dropout probability for attention weights"}
+    )
+    activation_dropout: float = field(
+        default=0.1, metadata={"help": "dropout probability after activation in FFN."}
+    )
+
+    encoder_embed_dim: int = field(default=512, metadata={"help": "encoder embedding dimension"})
+    encoder_ffn_embed_dim: int = field(default=2048, metadata={"help": "encoder embedding dimension for FFN"})
+    encoder_layers: int = field(default=12, metadata={"help": "num encoder layers"})
+    encoder_attention_heads: int = field(default=8, metadata={"help": "num encoder attention heads"})
+    encoder_normalize_before: bool = field(
+        default=True, metadata={"help": "apply layernorm before each encoder block"}
+    )
+
+    decoder_embed_dim: int = field(default=512, metadata={"help": "decoder embedding dimension"})
+    decoder_ffn_embed_dim: int = field(default=2048, metadata={"help": "decoder embedding dimension for FFN"})
+    decoder_layers: int = field(default=6, metadata={"help": "num decoder layers"})
+    decoder_attention_heads: int = field(default=8, metadata={"help": "num decoder attention heads"})
+    decoder_output_dim: int = field(
+        default=512,
+        metadata={"help": "decoder output dimension (extra linear layer if different from decoder embed dim)"},
+    )
+    decoder_normalize_before: bool = field(
+        default=True, metadata={"help": "apply layernorm before each decoder block"}
+    )
+
+    share_decoder_input_output_embed: bool = field(
+        default=False, metadata={"help": "share decoder input and output embeddings"}
+    )
+    layernorm_embedding: bool = field(default=False, metadata={"help": "add layernorm to embedding"})
+    no_scale_embedding: bool = field(default=False, metadata={"help": "if True, dont scale embeddings"})
+
+    load_pretrained_encoder_from: Optional[str] = field(
+        default=None, metadata={"help": "model to take encoder weights from (for initialization)"}
+    )
+    load_pretrained_decoder_from: Optional[str] = field(
+        default=None, metadata={"help": "model to take decoder weights from (for initialization)"}
+    )
+
+    max_source_positions: int = II("task.max_source_positions")
+    max_target_positions: int = II("task.max_target_positions")
+    feats_type: ChoiceEnum([x.name for x in SignFeatsType]) = II("task.feats_type")
+
+
+@register_model("sign2text_transformer", dataclass=Sign2TextTransformerConfig)
+class Sign2TextTransformerModel(FairseqEncoderDecoderModel):
+
+    def __init__(self, encoder, decoder):
+        super().__init__(encoder, decoder)
+
+    @classmethod
+    def build_encoder(cls, cfg, feats_type, feat_dim):
+        encoder = Sign2TextTransformerEncoder(cfg, feats_type, feat_dim)
+        pretraining_path = getattr(cfg, "load_pretrained_encoder_from", None)
+        if pretraining_path is not None:
+            if not Path(pretraining_path).exists():
+                logger.warning(f"skipped pretraining because {pretraining_path} does not exist")
+            else:
+                encoder = checkpoint_utils.load_pretrained_component_from_model(
+                    component=encoder, checkpoint=pretraining_path
+                )
+                logger.info(f"loaded pretrained encoder from: {pretraining_path}")
+        return encoder
+
+    @classmethod
+    def build_decoder(cls, cfg, task, embed_tokens):
+        decoder = TransformerDecoder(cfg, task.target_dictionary, embed_tokens)
+        pretraining_path = getattr(cfg, "load_pretrained_decoder_from", None)
+        if pretraining_path is not None:
+            if not Path(pretraining_path).exists():
+                logger.warning(f"skipped pretraining because {pretraining_path} does not exist")
+            else:
+                decoder = checkpoint_utils.load_pretrained_component_from_model(
+                    component=decoder, checkpoint=pretraining_path
+                )
+                logger.info(f"loaded pretrained decoder from: {pretraining_path}")
+        return decoder
+
+    @classmethod
+    def build_model(cls, cfg, task):
+        """Build a new model instance."""
+
+        if cfg.feats_type == SignFeatsType.i3d:
+            feat_dim = 1024
+        elif cfg.feats_type == SignFeatsType.mediapipe:
+            feat_dim = 543
+
+        def build_embedding(dictionary, embed_dim):
+            num_embeddings = len(dictionary)
+            padding_idx = dictionary.pad()
+            return Embedding(num_embeddings, embed_dim, padding_idx)
+
+        decoder_embed_tokens = build_embedding(task.target_dictionary, cfg.decoder_embed_dim)
+        encoder = cls.build_encoder(cfg, cfg.feats_type, feat_dim)
+        decoder = cls.build_decoder(cfg, task, decoder_embed_tokens)
+
+        return cls(encoder, decoder)
+
+    def get_normalized_probs(
+        self,
+        net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
+        log_probs: bool,
+        sample: Optional[Dict[str, Tensor]] = None,
+    ):
+        lprobs = self.get_normalized_probs_scriptable(net_output, log_probs, sample)
+        lprobs.batch_first = True
+        return lprobs
+
+    def forward(self, src_tokens, src_mediapipe_tokens, encoder_padding_mask, mediapipe_padding_mask, prev_output_tokens):
+        encoder_out = self.encoder(
+            src_tokens=src_tokens,
+            src_mediapipe_tokens=src_mediapipe_tokens,
+            encoder_padding_mask=encoder_padding_mask,
+            mediapipe_padding_mask=mediapipe_padding_mask,
+        )
+        decoder_out = self.decoder(prev_output_tokens=prev_output_tokens, encoder_out=encoder_out)
+        return decoder_out
+
+
+class Sign2TextTransformerEncoder(FairseqEncoder):
+    """Sign-to-text Transformer encoder + SGCN branch, fused safely back to encoder_embed_dim."""
+
+    def __init__(self, cfg, feats_type: SignFeatsType, feat_dim: int):
+        super().__init__(None)
+
+        self.num_updates = 0
+        self.dropout_module = FairseqDropout(p=cfg.dropout, module_name=self.__class__.__name__)
+        self.embed_scale = math.sqrt(cfg.encoder_embed_dim)
+        if cfg.no_scale_embedding:
+            self.embed_scale = 1.0
+
+        self.padding_idx = 1
+        self.feats_type = feats_type
+        self.encoder_embed_dim = cfg.encoder_embed_dim
+
+        # main input projection
+        if feats_type in (SignFeatsType.mediapipe, SignFeatsType.openpose):
+            self.feat_proj = nn.Linear(feat_dim * 3, cfg.encoder_embed_dim)
+        elif feats_type == SignFeatsType.i3d:
+            self.feat_proj = nn.Linear(feat_dim, cfg.encoder_embed_dim)
+
+        self.embed_positions = PositionalEmbedding(cfg.max_source_positions, cfg.encoder_embed_dim, self.padding_idx)
+
+        self.transformer_layers = nn.ModuleList([TransformerEncoderLayer(cfg) for _ in range(cfg.encoder_layers)])
+        self.layer_norm = LayerNorm(cfg.encoder_embed_dim) if cfg.encoder_normalize_before else None
+
+        # sgcn branch
+        self.encoder2 = Sgcn_Lstm()
+
+        # ✅ NEW: fusion projection (concat 256+256=512 -> back to 256)
+        self.fuse_proj = nn.Linear(cfg.encoder_embed_dim * 2, cfg.encoder_embed_dim)
+
+    def forward(self, src_tokens, src_mediapipe_tokens, encoder_padding_mask, mediapipe_padding_mask, return_all_hiddens=False):
+        # -------- main branch --------
+        if self.feats_type == SignFeatsType.mediapipe:
+            src_tokens = src_tokens.view(src_tokens.shape[0], src_tokens.shape[1], -1)  # (B,T,1629)
+
+        x = self.feat_proj(src_tokens).transpose(0, 1)  # (T,B,C=256)
+        x = self.embed_scale * x
+
+        # positions: feed tokens shaped (B,T), pad tokens = padding_idx
+        pos_input = encoder_padding_mask.long() * self.padding_idx
+        positions = self.embed_positions(pos_input).transpose(0, 1)  # (T,B,256)
+
+        x = x + positions
+        x = self.dropout_module(x)
+
+        encoder_states = []
+        for layer in self.transformer_layers:
+            x = layer(x, encoder_padding_mask)
+            if return_all_hiddens:
+                encoder_states.append(x)
+
+        if self.layer_norm is not None:
+            x = self.layer_norm(x)
+
+        # -------- sgcn branch (fix shapes for AD=33) --------
+        # src_mediapipe_tokens: (B,T,543,3)
+        mp = src_mediapipe_tokens
+
+        # pose-only landmarks: 33 points
+        mp = mp[:, :, 468:501, :]  # (B,T,33,3)
+
+        # sgcn expects (N,C,W,T)
+        mp = mp.permute(0, 3, 2, 1).contiguous()  # (B,3,33,T)
+
+        if self.num_updates < 1:
+            print("DEBUG src_tokens(main):", src_tokens.shape, src_tokens.dtype, src_tokens.device)
+            print("DEBUG mp(for sgcn):", mp.shape, mp.dtype, mp.device)
+
+        # ensure sgcn module on same device
+        self.encoder2 = self.encoder2.to(mp.device)
+        self.fuse_proj = self.fuse_proj.to(mp.device)
+
+        x2 = self.encoder2(mp)
+
+        # normalize sgcn output to (T,B,C2)
+        if x2.dim() == 3:
+            # assume (B,T,C2)
+            x2 = x2.permute(1, 0, 2).contiguous()
+        elif x2.dim() == 2:
+            x2 = x2.unsqueeze(0)  # (1,B,C2)
+        else:
+            raise RuntimeError(f"Sgcn_Lstm returned unexpected shape: {tuple(x2.shape)}")
+
+        # -------- fuse (concat then project back to encoder_embed_dim) --------
+        # ensure time alignment
+        if x2.size(0) != x.size(0):
+            T = max(x.size(0), x2.size(0))
+            if x.size(0) < T:
+                pad = torch.zeros(T - x.size(0), x.size(1), x.size(2), device=x.device, dtype=x.dtype)
+                x = torch.cat([x, pad], dim=0)
+            if x2.size(0) < T:
+                pad = torch.zeros(T - x2.size(0), x2.size(1), x2.size(2), device=x2.device, dtype=x2.dtype)
+                x2 = torch.cat([x2, pad], dim=0)
+
+        fused = torch.cat([x, x2], dim=2)           # (T,B,512)
+        fused_output = self.fuse_proj(fused)        # ✅ (T,B,256) so decoder encoder_attn works
+
+        # IMPORTANT: keep padding mask aligned to time dimension
+        encoder_padding_mask_combined = encoder_padding_mask
+
+        return {
+            "encoder_out": [fused_output],  # T x B x C(256)
+            "encoder_padding_mask": [encoder_padding_mask_combined] if encoder_padding_mask_combined.any() else [],
+            "encoder_embedding": [],
+            "encoder_states": encoder_states,
+            "src_tokens": [],
+        }
+
+    def reorder_encoder_out(self, encoder_out, new_order):
+        new_encoder_out = (
+            [] if len(encoder_out["encoder_out"]) == 0
+            else [x.index_select(1, new_order) for x in encoder_out["encoder_out"]]
+        )
+
+        new_encoder_padding_mask = (
+            [] if len(encoder_out["encoder_padding_mask"]) == 0
+            else [x.index_select(0, new_order) for x in encoder_out["encoder_padding_mask"]]
+        )
+
+        new_encoder_embedding = (
+            [] if len(encoder_out["encoder_embedding"]) == 0
+            else [x.index_select(0, new_order) for x in encoder_out["encoder_embedding"]]
+        )
+
+        encoder_states = encoder_out["encoder_states"]
+        if len(encoder_states) > 0:
+            for idx, state in enumerate(encoder_states):
+                encoder_states[idx] = state.index_select(1, new_order)
+
+        return {
+            "encoder_out": new_encoder_out,
+            "encoder_padding_mask": new_encoder_padding_mask,
+            "encoder_embedding": new_encoder_embedding,
+            "encoder_states": encoder_states,
+            "src_tokens": [],
+        }
+
+    def set_num_updates(self, num_updates):
+        super().set_num_updates(num_updates)
+        self.num_updates = num_updates
