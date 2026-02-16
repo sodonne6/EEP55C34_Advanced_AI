@@ -239,7 +239,7 @@ class Sign2TextTransformerEncoder(FairseqEncoder):
         # src_mediapipe_tokens: (B,T,543,3)
         mp = src_mediapipe_tokens
 
-        # pose-only landmarks: 33 points
+        # pose-only landmarks: 33 points - shane - changed so it aligns with the setup from the mediapipe npy file format we are using - this could explain why training was a bit stunted before 
         mp = mp[:, :, 0:33, :]  # (B,T,33,3)
 
         # sgcn expects (N,C,W,T)
