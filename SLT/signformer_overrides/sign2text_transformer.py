@@ -214,8 +214,14 @@ class Sign2TextTransformerEncoder(FairseqEncoder):
         x = self.embed_scale * x
 
         # positions: feed tokens shaped (B,T), pad tokens = padding_idx
-        pos_input = encoder_padding_mask.long() * self.padding_idx
-        positions = self.embed_positions(pos_input).transpose(0, 1)  # (T,B,256)
+        #pos_input = encoder_padding_mask.long() * self.padding_idx
+        #positions = self.embed_positions(pos_input).transpose(0, 1)  # (T,B,256)
+        
+        #shane - fix: padding_idx gives you a tensor of all 1/0 so most timesteps get the same pos embedding
+        # instead create a dummy token tensor shape B T where pads are padding_idx and non pads are anything else (usually 0)
+        pos_input = torch.zeros_like(encoder_padding_mask, dtype=torch.long)
+        pos_input = pos_input.masked_fill(encoder_padding_mask, self.padding_idx)
+        positions = self.embed_positions(pos_input).transpose(0, 1)
 
         x = x + positions
         x = self.dropout_module(x)
@@ -234,7 +240,7 @@ class Sign2TextTransformerEncoder(FairseqEncoder):
         mp = src_mediapipe_tokens
 
         # pose-only landmarks: 33 points
-        mp = mp[:, :, 468:501, :]  # (B,T,33,3)
+        mp = mp[:, :, 0:33, :]  # (B,T,33,3)
 
         # sgcn expects (N,C,W,T)
         mp = mp.permute(0, 3, 2, 1).contiguous()  # (B,3,33,T)
@@ -244,8 +250,8 @@ class Sign2TextTransformerEncoder(FairseqEncoder):
             print("DEBUG mp(for sgcn):", mp.shape, mp.dtype, mp.device)
 
         # ensure sgcn module on same device
-        self.encoder2 = self.encoder2.to(mp.device)
-        self.fuse_proj = self.fuse_proj.to(mp.device)
+        #self.encoder2 = self.encoder2.to(mp.device)
+        #self.fuse_proj = self.fuse_proj.to(mp.device)
 
         x2 = self.encoder2(mp)
 
