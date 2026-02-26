@@ -1,3 +1,16 @@
+##
+## overall issue right now - the majority of points are for the face 
+## -the face carries minimal information and the model is holding these points to the same importance as the body and the hands
+## - solution: maybe drop the face points and use the 33 pose and 21 hand points only (total 33+21+21=75 points) - this would also reduce the input dimension and make training easier
+## - problem: hands sometimes lose tracking so need some way to interpolate between recognised hand frames and non-recognised hand frames so we don't end up with random noise for the hand points when the tracking is lost
+##          - possible solution: if hand tracking is lost for a frame (it 0's all hand pooint), take the last recognised hand points and the next recognised hand points and interpolate between them for the frames in between - this way we maintain some kind of hand movement information even when tracking is lost
+##  -run ablation:
+##  - full model with all points (face+pose+hands)
+##  - model with pose and hands only (no face)
+##  - add GCN for hands - 3GCN? one for pose, one for left hand, one for right hand - then fuse all three with the transformer branch
+##
+##
+
 import pdb
 import math
 import logging
@@ -243,6 +256,7 @@ class Sign2TextTransformerEncoder(FairseqEncoder):
         mp = mp[:, :, 0:33, :]  # (B,T,33,3)
 
         # sgcn expects (N,C,W,T)
+        # shane - currently the GCN only uses the 33 pose landmarks - later we can try to add hands GCN
         mp = mp.permute(0, 3, 2, 1).contiguous()  # (B,3,33,T)
 
         if self.num_updates < 1:

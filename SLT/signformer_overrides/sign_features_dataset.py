@@ -122,6 +122,9 @@ class SignFeatsDataset(FairseqDataset):
             sizes.append(int(row["signs_length"]))
 
         logger.info(f"loaded {len(ids)} samples")
+        
+        if manifest["signs_type"].nunique() > 1:
+            logger.warning("Multiple feats_type found in manifest! Using the first one, but this may cause issues.")
 
         # Use the first row (manifest could have multiple rows)
         feats_type = manifest["signs_type"].iloc[0]
@@ -179,13 +182,41 @@ class SignFeatsDataset(FairseqDataset):
         # CASE B) feats_type in {i3d, openpose}
         # Keep existing behavior: main source is npy + an extra mediapipe npy.
         # ------------------------------------------------------------
+        #elif self.feats_type in (SignFeatsType.i3d, SignFeatsType.openpose):
+        #    with open(feats_file, "rb") as f:
+        #        pose = np.load(f)
+        #    pose = self.postprocess_array(pose, kind=str(self.feats_type.value))
+#
+        #    with open(feats_mediapipe_file, "rb") as f:
+        #        pose_mediapipe = np.load(f)
+#
+        #    return {"id": index, "vid_id": _id, "source": pose, "mediapipe_source": pose_mediapipe}
         elif self.feats_type in (SignFeatsType.i3d, SignFeatsType.openpose):
             with open(feats_file, "rb") as f:
-                pose = np.load(f)
-            pose = self.postprocess_array(pose, kind=str(self.feats_type.value))
+                pose = np.load(f)  # expected (T, 1024) for i3d
 
             with open(feats_mediapipe_file, "rb") as f:
-                pose_mediapipe = np.load(f)
+                pose_mediapipe = np.load(f)  # expected (T, 33, 3) in your Kaggle dump
+
+            # ---- Align timelines ("by the book" intersection) ----
+            T_common = min(pose.shape[0], pose_mediapipe.shape[0])
+
+            # Clamp offset/length to valid window
+            start = offset if 0 <= offset < T_common else 0
+            if length is None or length <= 0:
+                end = T_common
+            else:
+                end = min(start + length, T_common)
+
+            # Guard against degenerate slices
+            if end <= start:
+                start, end = 0, T_common
+
+            pose = pose[start:end]
+            pose_mediapipe = pose_mediapipe[start:end]
+
+            pose = self.postprocess_array(pose, kind=str(self.feats_type.value))
+            pose_mediapipe = self.postprocess_array(pose_mediapipe, kind="mediapipe_npy")
 
             return {"id": index, "vid_id": _id, "source": pose, "mediapipe_source": pose_mediapipe}
 
@@ -406,5 +437,9 @@ class RandomCropSignFeatsDataset(RandomCropDataset):
             excess = item_len - self.truncation_length
             if excess > 0:
                 start_idx = np.random.randint(0, excess)
-                item["source"] = item["source"][start_idx : start_idx + self.truncation_length]
+                end_idx = start_idx + self.truncation_length
+                item["source"] = item["source"][start_idx : end_idx]
+                
+                if "mediapipe_source" in item and item["mediapipe_source"] is not None:
+                    item["mediapipe_source"] = item["mediapipe_source"][start_idx : end_idx]
             return item
