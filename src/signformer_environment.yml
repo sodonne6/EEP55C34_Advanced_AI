@@ -1,0 +1,63 @@
+name: signformer
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.8
+  - pip=22.2
+
+  # PyTorch (GPU): keep torch 1.11 era for fairseq-fork stability
+  - pytorch=1.11.0
+  - torchvision=0.12.0
+  - torchaudio=0.11.0
+  - cudatoolkit=11.3
+
+  # Core
+  - numpy=1.24.4
+  - pandas=1.4.3
+  - scipy
+  - tqdm=4.64.0
+  - pyyaml
+  - h5py=3.7.0
+  - ffmpeg=4.4.2
+  - cython
+
+  # Nice-to-haves (optional)
+  - jupyterlab=3.4.4
+
+  - pip:
+      # Hydra/OmegaConf pinned like your runs
+      - hydra-core==1.1.0
+      - omegaconf==2.1.2
+
+      # Tokenization / eval
+      - sentencepiece==0.1.96
+      - sacrebleu==2.3.1
+      - sacremoses==0.0.53
+      - tensorboardx==2.5.1
+      - wandb==0.12.21
+
+      # Common deps seen in this repo
+      - einops
+      - msgpack
+      - nltk
+      - soundfile
+      - fairscale
+      - bitarray
+      - pose-format==0.1.0
+      - srt==3.5.2
+      - pandarallel==1.6.1
+      - truecase
+
+      # MediaPipe stack (keep these strict)
+      - mediapipe==0.10.11
+      - protobuf==3.20.1
+      - opencv-contrib-python==4.13.0.92
+      - matplotlib==3.7.5
+      - flatbuffers
+      - attrs
+
+      # IMPORTANT: do NOT install pip fairseq here
+      # - fairseq

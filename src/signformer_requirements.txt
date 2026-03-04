@@ -1,0 +1,83 @@
+# Core dependencies for SignFormer pipeline
+# Python 3.8 required
+
+# ---------- Core ----------
+tqdm
+pyyaml
+einops
+scipy
+soundfile
+nltk
+msgpack
+pyarrow
+
+# Keep numpy compatible with mediapipe + py3.8 env
+numpy==1.24.4
+
+# (optional but recommended for TSV builder / manifests)
+pandas
+
+# ---------- PyTorch (install separately or via conda for CUDA) ----------
+# torch==1.11.0
+# torchvision==0.12.0
+# torchaudio==0.11.0
+# Note: Install with: conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+
+# ---------- Fairseq / Hydra stack ----------
+fairseq
+hydra-core==1.1.0
+omegaconf==2.1.2
+
+# ---------- Tokenization + metrics ----------
+sentencepiece
+sacrebleu
+sacremoses
+
+# ---------- Logging ----------
+tensorboard
+tensorboardX
+wandb==0.12.21
+
+# ---------- Fork-specific deps ----------
+bitarray
+pose-format==0.1.0
+truecase
+ipython
+jedi
+fairscale
+
+# ---------- Media utilities ----------
+h5py
+soundfile
+pysoundfile
+imageio
+imageio-ffmpeg
+
+# ---------- MediaPipe landmine pins (DO NOT UPGRADE protobuf) ----------
+mediapipe==0.10.11
+protobuf==3.20.1
+opencv-contrib-python==4.13.0.92
+matplotlib==3.7.5
+flatbuffers
+attrs
+
+# ---------- Additional utilities for matplotlib ----------
+kiwisolver
+cycler
+pyparsing
+python-dateutil
+fonttools
+packaging
+pillow
+
+# ---------- Data utilities ----------
+pandarallel
+
+# ---------- Optional: for downloading data from Kaggle ----------
+# kagglehub
+# kaggle
+
+# ---------- Optional: for compilation (if building from source) ----------
+# cython
+# setuptools
+# wheel
