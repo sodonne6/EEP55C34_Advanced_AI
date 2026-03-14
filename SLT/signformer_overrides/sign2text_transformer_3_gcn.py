@@ -134,14 +134,14 @@ class HandGraph:
 class StableSgcnLayer(nn.Module):
     """A stable (registered-parameter) SGCN block matching the original math."""
 
-    def __init__(self, ad: torch.Tensor, ad2: torch.Tensor):
+    def __init__(self, ad: torch.Tensor, ad2: torch.Tensor, in_channels: int):
         super().__init__()
         self.register_buffer("ad", ad.float())
         self.register_buffer("ad2", ad2.float())
 
-        self.conv_t = nn.Conv2d(3, 64, kernel_size=(9, 1), padding=(4, 0))
-        self.conv_x = nn.Conv2d(3 + 64, 64, kernel_size=(1, 1))
-        self.conv_y = nn.Conv2d(3 + 64, 64, kernel_size=(1, 1))
+        self.conv_t = nn.Conv2d(in_channels, 64, kernel_size=(9, 1), padding=(4, 0))
+        self.conv_x = nn.Conv2d(in_channels + 64, 64, kernel_size=(1, 1))
+        self.conv_y = nn.Conv2d(in_channels + 64, 64, kernel_size=(1, 1))
 
         self.conv_z1 = nn.Conv2d(128, 16, kernel_size=(9, 1), padding=(4, 0))
         self.conv_z2 = nn.Conv2d(16, 16, kernel_size=(15, 1), padding=(7, 0))
@@ -149,7 +149,7 @@ class StableSgcnLayer(nn.Module):
         self.dropout = nn.Dropout2d(p=0.25)
 
     def forward(self, x):
-        # x: (B, C=3, W, T)
+        # x: (B, C, W, T)
         k1 = torch.relu(self.conv_t(x))
         k = torch.cat((x, k1), dim=1)
 
@@ -181,9 +181,9 @@ class StableSgcnLstm(nn.Module):
         self.num_joints = num_joints
         self.output_dim = 256
 
-        self.sgcn_1 = StableSgcnLayer(ad, ad2)
-        self.sgcn_2 = StableSgcnLayer(ad, ad2)
-        self.sgcn_3 = StableSgcnLayer(ad, ad2)
+        self.sgcn_1 = StableSgcnLayer(ad, ad2, in_channels=3)
+        self.sgcn_2 = StableSgcnLayer(ad, ad2, in_channels=48)
+        self.sgcn_3 = StableSgcnLayer(ad, ad2, in_channels=48)
 
         self.lstm_1 = nn.LSTM(
             input_size=48 * num_joints,
