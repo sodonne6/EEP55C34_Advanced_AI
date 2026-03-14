@@ -1,0 +1,506 @@
+"""
+sign_features_dataset_3_gcn.py
+
+Dataset for the 3-GCN model (sign2text_transformer_3gcn).
+
+Identical to sign_features_dataset.py with one change:
+  For feats_type in {i3d, openpose} the mediapipe .npy file must contain
+  75 landmarks (pose + left-hand + right-hand) rather than 33 (pose only).
+
+  Expected mediapipe .npy shape: (T, 75, 3)
+    [:, 0:33,  :] → 33 MediaPipe pose landmarks
+    [:, 33:54, :] → 21 MediaPipe left-hand landmarks
+    [:, 54:75, :] → 21 MediaPipe right-hand landmarks
+
+The collater is already shape-agnostic so no collater changes are needed —
+only the file-level validation and docstring differ from the base class.
+"""
+
+# ---------------------------------------------------------------------------
+# Expected landmark counts for the 3-GCN model
+# ---------------------------------------------------------------------------
+_POSE_N  = 33
+_LH_N    = 21
+_RH_N    = 21
+_TOTAL_N = _POSE_N + _LH_N + _RH_N   # 75
+
+# HF holistic layout
+_HF_TOTAL_N = 543
+_HF_POSE_SLICE = slice(0, 33)
+_HF_LH_SLICE   = slice(501, 522)
+_HF_RH_SLICE   = slice(522, 543)
+
+import sys
+import logging
+from enum import Enum
+from pathlib import Path
+from typing import List, Union, Optional
+
+import numpy as np
+import pandas as pd
+
+import torch
+import torch.nn.functional as F
+
+from pose_format import Pose
+
+from fairseq.data import FairseqDataset, BaseWrapperDataset, RandomCropDataset
+from fairseq.data.data_utils import compute_mask_indices, numpy_seed
+from fairseq.data.text_compressor import TextCompressor, TextCompressionLevel
+
+logger = logging.getLogger(__name__)
+
+
+class SignFeatsType(str, Enum):
+    mediapipe = "mediapipe"
+    openpose = "openpose"
+    i3d = "i3d"
+    CNN2d = "CNN2d"
+
+
+class NormType(str, Enum):
+    body = "body"
+    kp_wise = "kp_wise"
+    global_xyz = "global_xyz"
+    normalize = "normalize"
+
+
+def _as_featstype(x) -> SignFeatsType:
+    if isinstance(x, SignFeatsType):
+        return x
+    if isinstance(x, str):
+        x = x.strip()
+        for v in SignFeatsType:
+            if x == v.value:
+                return v
+        try:
+            return SignFeatsType[x]
+        except Exception:
+            pass
+    raise ValueError(f"Unknown feats_type={x} (type={type(x)})")
+
+
+# ---------------------------------------------------------------------------
+# Expected landmark counts for the 3-GCN model
+# ---------------------------------------------------------------------------
+_POSE_N  = 33   # indices [0:33]
+_LH_N    = 21   # indices [33:54]
+_RH_N    = 21   # indices [54:75]
+_TOTAL_N = _POSE_N + _LH_N + _RH_N   # 75
+
+
+class SignFeatsDataset3GCN(FairseqDataset):
+    """
+    Same as SignFeatsDataset but expects mediapipe landmarks with 75 points
+    (pose=33, left-hand=21, right-hand=21) for i3d/openpose feats_type.
+
+    The encoder (Sign2TextTransformerEncoder3GCN) slices these internally:
+        mp[:, :,  0:33, :] → pose
+        mp[:, :, 33:54, :] → left hand
+        mp[:, :, 54:75, :] → right hand
+    """
+
+    def __init__(
+        self,
+        ids: List[str],
+        feats_files: List[Union[Path, str]],
+        feats_mediapipe_files: List[Union[Path, str]],
+        offsets: List[int],
+        sizes: List[int],
+        feats_type: SignFeatsType,
+        normalization: NormType = NormType.body,
+        data_augmentation: bool = False,
+        min_sample_size: int = 0,
+        max_sample_size: Optional[int] = None,
+        shuffle: bool = True,
+    ):
+        super().__init__()
+        assert len(ids) == len(feats_files) == len(offsets) == len(sizes) == len(feats_mediapipe_files)
+
+        self.ids = ids
+        self.feats_files = feats_files
+        self.feats_mediapipe_files = feats_mediapipe_files
+        self.offsets = offsets
+        self.sizes = sizes
+
+        self.feats_type: SignFeatsType = _as_featstype(feats_type)
+        self.normalization = normalization
+        self.data_augmentation = data_augmentation
+        self.min_sample_size = min_sample_size
+        self.max_sample_size = max_sample_size if max_sample_size is not None else sys.maxsize
+        self.shuffle = shuffle
+        self.skipped_ids = []
+
+    def filter_by_length(self, min_sample_size, max_sample_size):
+        for _id, size in zip(self.ids[:], self.sizes[:]):
+            if size < self.min_sample_size or size > self.max_sample_size:
+                idx = self.ids.index(_id)
+                self.feats_files.pop(idx)
+                self.feats_mediapipe_files.pop(idx)
+                self.offsets.pop(idx)
+                self.sizes.pop(idx)
+                self.ids.remove(_id)
+                self.skipped_ids.append(_id)
+        logger.info(f"Filtered {len(self.skipped_ids)} sentences, that were too short or too long.")
+
+    @classmethod
+    def from_manifest_file(cls, manifest_file: Union[str, Path], **kwargs):
+        ids = []
+        feats_files = []
+        feats_mediapipe_files = []
+        offsets = []
+        sizes = []
+
+        manifest = pd.read_csv(manifest_file, sep="\t")
+        for _, row in manifest.iterrows():
+            ids.append(row["id"])
+            feats_files.append(row["signs_file"])
+            feats_mediapipe_files.append(row.get("signs_mediapipe_file", row["signs_file"]))
+            offsets.append(int(row["signs_offset"]))
+            sizes.append(int(row["signs_length"]))
+
+        logger.info(f"loaded {len(ids)} samples")
+
+        if manifest["signs_type"].nunique() > 1:
+            logger.warning("Multiple feats_type found in manifest! Using the first one.")
+
+        feats_type = manifest["signs_type"].iloc[0]
+        return cls(
+            ids,
+            feats_files=feats_files,
+            feats_mediapipe_files=feats_mediapipe_files,
+            offsets=offsets,
+            sizes=sizes,
+            feats_type=feats_type,
+            **kwargs,
+        )
+        
+    def _extract_pose_hands_75(self, arr: np.ndarray, sample_id: str) -> np.ndarray:
+        """
+        Accept either:
+          - already reduced (T, 75, 3)
+          - full HF holistic (T, 543, 3)
+        and always return (T, 75, 3)
+        """
+        if arr.ndim != 3 or arr.shape[2] != 3:
+            raise ValueError(
+                f"Expected mediapipe array of shape (T, K, 3), got {arr.shape} for sample '{sample_id}'"
+            )
+
+        # Already reduced format
+        if arr.shape[1] == _TOTAL_N:
+            return arr
+
+        # Full HF holistic format: pose + face + left hand + right hand
+        if arr.shape[1] == _HF_TOTAL_N:
+            pose = arr[:, _HF_POSE_SLICE, :]
+            lh   = arr[:, _HF_LH_SLICE, :]
+            rh   = arr[:, _HF_RH_SLICE, :]
+            return np.concatenate([pose, lh, rh], axis=1)
+
+        raise ValueError(
+            f"Unsupported mediapipe landmark count {arr.shape[1]} for sample '{sample_id}'. "
+            f"Expected either 75 or 543 landmarks."
+        )
+
+    def _resample_time_np(self, arr: np.ndarray, target_T: int) -> np.ndarray:
+        """
+        Resample along time axis only.
+        Input:  (T, K, C)
+        Output: (target_T, K, C)
+        """
+        src_T = int(arr.shape[0])
+
+        if src_T == target_T:
+            return arr
+
+        if target_T <= 0:
+            raise ValueError(f"target_T must be > 0, got {target_T}")
+
+        if src_T == 0:
+            raise ValueError("Cannot resample empty mediapipe sequence")
+
+        if src_T == 1:
+            return np.repeat(arr, target_T, axis=0)
+
+        x = torch.from_numpy(arr).float()              # (T, K, C)
+        T, K, C = x.shape
+        x = x.permute(1, 2, 0).contiguous()           # (K, C, T)
+        x = x.view(1, K * C, T)                       # (1, K*C, T)
+        x = F.interpolate(x, size=target_T, mode="linear", align_corners=False)
+        x = x.view(K, C, target_T).permute(2, 0, 1).contiguous()   # (target_T, K, C)
+        return x.numpy()
+
+    def __getitem__(self, index):
+        _id = self.ids[index]
+        feats_file = self.feats_files[index]
+        feats_mediapipe_file = self.feats_mediapipe_files[index]
+        offset = self.offsets[index]
+        length = self.sizes[index]
+
+        # ----------------------------------------------------------------
+        # CASE A) mediapipe only (no i3d main branch)
+        # ----------------------------------------------------------------
+        if self.feats_type == SignFeatsType.mediapipe:
+            feats_file_str = str(feats_file)
+
+            if feats_file_str.endswith(".pose"):
+                with open(feats_file, "rb") as f:
+                    pose = Pose.read(f.read())
+
+                frames_list = list(range(offset, offset + length))
+                frames_list = [fr for fr in frames_list if fr < pose.body.data.shape[0]]
+                pose.body = pose.body.select_frames(frames_list)
+
+                pose = self.postprocess_pose(pose)
+                return {"id": index, "vid_id": _id, "source": pose}
+
+            with open(feats_file, "rb") as f:
+                arr = np.load(f)
+
+            T = arr.shape[0]
+            end = min(offset + length, T)
+            arr = arr[offset:end]
+
+            x = self.postprocess_array(arr, kind="mediapipe_npy")
+            return {"id": index, "vid_id": _id, "source": x}
+
+        # ----------------------------------------------------------------
+        # CASE B) i3d / openpose main branch + 75-landmark mediapipe side branch
+        #
+        #   mediapipe .npy expected shape: (T, 75, 3)
+        #     [:, 0:33,  :] → pose (33 pts)
+        #     [:, 33:54, :] → left hand (21 pts)
+        #     [:, 54:75, :] → right hand (21 pts)
+        # ----------------------------------------------------------------
+        elif self.feats_type in (SignFeatsType.i3d, SignFeatsType.openpose):
+            with open(feats_file, "rb") as f:
+                pose = np.load(f)  # e.g. (T_i3d, 1024)
+
+            with open(feats_mediapipe_file, "rb") as f:
+                pose_mediapipe = np.load(f)  # either (T_mp, 543, 3) or (T_mp, 75, 3)
+
+            # 1) Reduce full holistic 543 -> 75 (pose + left hand + right hand)
+            pose_mediapipe = self._extract_pose_hands_75(pose_mediapipe, _id)
+
+            # 2) Use I3D as the anchor timeline
+            T_i3d = pose.shape[0]
+
+            # 3) Resample mediapipe to full I3D length BEFORE offset/length crop
+            pose_mediapipe = self._resample_time_np(pose_mediapipe, T_i3d)
+
+            # 4) Apply the same crop window on the shared I3D timeline
+            start = offset if 0 <= offset < T_i3d else 0
+            if length is None or length <= 0:
+                end = T_i3d
+            else:
+                end = min(start + length, T_i3d)
+
+            if end <= start:
+                start, end = 0, T_i3d
+
+            pose = pose[start:end]
+            pose_mediapipe = pose_mediapipe[start:end]
+
+            pose = self.postprocess_array(pose, kind=str(self.feats_type.value))
+            pose_mediapipe = self.postprocess_array(pose_mediapipe, kind="mediapipe_npy")
+
+            return {
+                "id": index,
+                "vid_id": _id,
+                "source": pose,
+                "mediapipe_source": pose_mediapipe,
+            }
+        else:
+            raise NotImplementedError(f"Unsupported feats_type: {self.feats_type}")
+
+    def __len__(self):
+        return len(self.sizes)
+
+    # -----------------------
+    # Postprocess helpers
+    # -----------------------
+    def postprocess_pose(self, pose: Pose):
+        import mediapipe as mp
+
+        mp_holistic = mp.solutions.holistic
+        FACEMESH_CONTOURS_POINTS = [
+            str(p)
+            for p in sorted(
+                set([p for p_tup in list(mp_holistic.FACEMESH_CONTOURS) for p in p_tup])
+            )
+        ]
+        POSE_RM = [
+            "LEFT_KNEE", "RIGHT_KNEE", "LEFT_ANKLE", "RIGHT_ANKLE",
+            "LEFT_HEEL", "RIGHT_HEEL", "LEFT_FOOT_INDEX", "RIGHT_FOOT_INDEX",
+        ]
+        POSE_POINTS = [kp.name for kp in mp_holistic.PoseLandmark if kp.name not in POSE_RM]
+
+        pose = pose.get_components(
+            ["FACE_LANDMARKS", "POSE_LANDMARKS", "LEFT_HAND_LANDMARKS", "RIGHT_HAND_LANDMARKS"],
+            {"FACE_LANDMARKS": FACEMESH_CONTOURS_POINTS, "POSE_LANDMARKS": POSE_POINTS},
+        )
+
+        if self.normalization == NormType.body:
+            normalize_info = pose.header.normalization_info(
+                p1=("POSE_LANDMARKS", "RIGHT_SHOULDER"),
+                p2=("POSE_LANDMARKS", "LEFT_SHOULDER"),
+            )
+            pose.normalize(normalize_info)
+        elif self.normalization == NormType.kp_wise:
+            pose.normalize_distribution(axis=(0, 1))
+        elif self.normalization == NormType.global_xyz:
+            pose.normalize_distribution(axis=(0, 1, 2))
+
+        if self.data_augmentation:
+            pose = pose.augment2d()
+
+        return pose.torch()
+
+    def postprocess_array(self, arr: np.ndarray, kind: str):
+        if torch.is_tensor(arr):
+            return arr
+        return torch.from_numpy(arr)
+
+    # -----------------------
+    # Collater (shape-agnostic — works for any K in (T, K, 3))
+    # -----------------------
+    def collater(self, samples):
+        if len(samples) == 0:
+            return {}
+
+        if self.feats_type == SignFeatsType.mediapipe:
+            max_length = max([s["source"].shape[0] for s in samples])
+        elif self.feats_type in (SignFeatsType.i3d, SignFeatsType.openpose):
+            max_length = max([s["source"].shape[0] for s in samples])
+            max_mediapipe_length = max([s["mediapipe_source"].shape[0] for s in samples])
+        else:
+            raise NotImplementedError(f"Unsupported feats_type in collater: {self.feats_type}")
+
+        ids = []
+        padding_masks = []
+        collated_sources = []
+        mediapipe_padding_masks = []
+        collated_mediapipe_sources = []
+
+        for sample in samples:
+            x = sample["source"]
+            if not torch.is_tensor(x):
+                x = torch.from_numpy(x)
+
+            if self.feats_type == SignFeatsType.mediapipe:
+                padding_mask = torch.zeros(x.shape[0], dtype=torch.bool)
+
+                if padding_mask.all():
+                    continue
+
+                diff_length = max_length - len(padding_mask)
+                ids.append(sample["id"])
+                padding_masks.append(F.pad(padding_mask, (0, diff_length), value=True))
+
+                if x.dim() == 3:
+                    collated_sources.append(F.pad(x, (0, 0, 0, 0, 0, diff_length), value=0))
+                elif x.dim() == 2:
+                    collated_sources.append(F.pad(x, (0, 0, 0, diff_length), value=0))
+                else:
+                    raise ValueError(f"Unexpected mediapipe tensor shape: {tuple(x.shape)}")
+
+            else:
+                mp = sample["mediapipe_source"]
+                if not torch.is_tensor(mp):
+                    mp = torch.from_numpy(mp)
+
+                padding_mask = torch.zeros(x.shape[0], dtype=torch.bool)
+                mediapipe_padding_mask = torch.zeros(mp.shape[0], dtype=torch.bool)
+
+                if padding_mask.all():
+                    continue
+
+                diff_length = max_length - len(padding_mask)
+                diff_mp_length = max_mediapipe_length - len(mediapipe_padding_mask)
+
+                ids.append(sample["id"])
+                padding_masks.append(F.pad(padding_mask, (0, diff_length), value=True))
+                mediapipe_padding_masks.append(F.pad(mediapipe_padding_mask, (0, diff_mp_length), value=True))
+
+                # Pad along time axis — works for any (T, K, C) shape
+                collated_sources.append(F.pad(x, (0, 0, 0, diff_length), value=0))
+                collated_mediapipe_sources.append(F.pad(mp, (0, 0, 0, 0, 0, diff_mp_length), value=0))
+
+        if len(collated_sources) == 0:
+            return {}
+
+        if self.feats_type == SignFeatsType.mediapipe:
+            src = torch.stack(collated_sources).float()
+            pad = torch.stack(padding_masks)
+            return {
+                "id": torch.LongTensor(ids),
+                "net_input": {
+                    "src_tokens": src,
+                    "encoder_padding_mask": pad,
+                    "src_mediapipe_tokens": src,
+                    "mediapipe_padding_mask": pad,
+                },
+            }
+
+        # i3d / openpose — mediapipe tensor is (B, T, 75, 3)
+        return {
+            "id": torch.LongTensor(ids),
+            "net_input": {
+                "src_tokens": torch.stack(collated_sources).float(),
+                "src_mediapipe_tokens": torch.stack(collated_mediapipe_sources).float(),
+                "encoder_padding_mask": torch.stack(padding_masks),
+                "mediapipe_padding_mask": torch.stack(mediapipe_padding_masks),
+            },
+        }
+
+    def num_tokens(self, index):
+        return self.size(index)
+
+    def size(self, index):
+        return self.sizes[index]
+
+    def ordered_indices(self):
+        if self.shuffle:
+            order = np.lexsort([np.random.permutation(len(self)), np.array(self.sizes)])
+            return order[::-1]
+        else:
+            return np.arange(len(self))
+
+
+class MaskSignFeatsDataset(BaseWrapperDataset):
+    def __init__(self, dataset: SignFeatsDataset3GCN, **mask_compute_kwargs):
+        super().__init__(dataset)
+        self.mask_compute_kwargs = mask_compute_kwargs
+        self._features_size_map = {}
+        self._C = mask_compute_kwargs["encoder_embed_dim"]
+        self._conv_feature_layers = eval(mask_compute_kwargs["conv_feature_layers"])
+
+    def _compute_mask_indices(self, dims, padding_mask):
+        raise NotImplementedError("This feature is still not available")
+
+    def _get_mask_indices_dims(self, size, padding=0, dilation=1):
+        raise NotImplementedError("This feature is still not available")
+
+    def collater(self, samples):
+        out = self.dataset.collater(samples)
+        raise NotImplementedError("This feature is still not available")
+
+
+class RandomCropSignFeatsDataset(RandomCropDataset):
+    def __init__(self, dataset: SignFeatsDataset3GCN, truncation_length: int, **kwargs):
+        super().__init__(dataset, truncation_length, **kwargs)
+
+    def __getitem__(self, index):
+        with numpy_seed(self.seed, self.epoch, index):
+            item = self.dataset[index]
+            item_len = item["source"].size(0)
+            excess = item_len - self.truncation_length
+            if excess > 0:
+                start_idx = np.random.randint(0, excess)
+                end_idx = start_idx + self.truncation_length
+                item["source"] = item["source"][start_idx:end_idx]
+
+                if "mediapipe_source" in item and item["mediapipe_source"] is not None:
+                    item["mediapipe_source"] = item["mediapipe_source"][start_idx:end_idx]
+            return item
