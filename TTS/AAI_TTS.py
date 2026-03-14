@@ -1,48 +1,72 @@
-# Use real speaker embeddings instead of random vectors
-# This improves naturalness of SpeechT5 output
+# TTS Module using SpeechT5
+# Uses real speaker embeddings from the CMU Arctic dataset
+# Includes function that accepts text as input
 
-# Import Libraries
 import torch
 import soundfile as sf
 from transformers import SpeechT5Processor, SpeechT5ForTextToSpeech, SpeechT5HifiGan
 from datasets import load_dataset
 
-# Check device
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print("Using device:", device)
+class AAI_TTS:
 
-# Load SpeechT5 models
-processor = SpeechT5Processor.from_pretrained("microsoft/speecht5_tts")
-tts_model = SpeechT5ForTextToSpeech.from_pretrained("microsoft/speecht5_tts").to(device)
-vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan").to(device)
+    def __init__(self):
+        """Initialize models and speaker embeddings"""
 
-# Load real speaker embeddings from CMU Arctic dataset
-#embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
-embeddings_dataset = load_dataset(
-    "Matthijs/cmu-arctic-xvectors",
-    split="validation",
-    revision="refs/convert/parquet"
-)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        print("Using device:", self.device)
 
-# Choose a speaker embedding (change index for different voices)
-speaker_embedding = torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
-speaker_embedding = speaker_embedding.to(device)
+        # Load SpeechT5 models
+        self.processor = SpeechT5Processor.from_pretrained("microsoft/speecht5_tts")
+        self.tts_model = SpeechT5ForTextToSpeech.from_pretrained("microsoft/speecht5_tts").to(self.device)
+        self.vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan").to(self.device)
 
-# Prepare input text
-text = "Hello, this is a text to speech test generated using SpeechT5."
-inputs = processor(text=text, return_tensors="pt")
+        # Load speaker embeddings
+        embeddings_dataset = load_dataset(
+            "Matthijs/cmu-arctic-xvectors",
+            split="validation",
+            revision="refs/convert/parquet"
+        )
 
-# Move inputs to GPU if available
-inputs = {k: v.to(device) for k, v in inputs.items()}
+        # Choose speaker voice
+        self.speaker_embedding = torch.tensor(
+            embeddings_dataset[7306]["xvector"]
+        ).unsqueeze(0).to(self.device)
 
-# Generate speech
-speech = tts_model.generate_speech(
-    inputs["input_ids"],
-    speaker_embedding,
-    vocoder=vocoder
-)
 
-# Save audio
-sf.write("speech.wav", speech.cpu().numpy(), samplerate=16000)
+    def generate_speech(self, text, output_file="speech.wav"):
+        """Generate speech from input text"""
 
-print("Speech generated and saved as speech.wav")
+        # Process text
+        inputs = self.processor(text=text, return_tensors="pt")
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
+        # Generate speech
+        speech = self.tts_model.generate_speech(
+            inputs["input_ids"],
+            self.speaker_embedding,
+            vocoder=self.vocoder
+        )
+
+        # Save audio
+        sf.write(output_file, speech.cpu().numpy(), samplerate=16000)
+
+        print(f"Speech saved to {output_file}")
+
+        return output_file
+
+
+# Example usage when running this file directly
+if __name__ == "__main__":
+
+    tts = AAI_TTS()
+
+    text_input = input("Enter text to convert to speech: ")
+
+    tts.generate_speech(text_input)
+
+
+# Example usage from another file:
+
+# from TTS.AAI_TTS import AAI_TTS
+# tts = AAI_TTS()
+# tts.generate_speech("Hello, this text came from the sign language model.")
