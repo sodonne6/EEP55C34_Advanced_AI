@@ -6,13 +6,22 @@ This model intends to convert Continious ASL to Synthesised Speech
 
 ## Pipeline
 
-ASL video -> vision encoder -> text -> speech synthesis model -> speech
+### Original Archtecture 
 
-![Architecture Diagram](https://github.com/sodonne6/EEP55C34_Advanced_AI/blob/main/project_notes/architecture.png?raw=1)
+The original approach was inspired by SignFormer-GCN
 
-## Pre Trained Models
+![Architecture Diagram](https://github.com/sodonne6/EEP55C34_Advanced_AI/blob/main/project_notes/signformer_paper_diagram.png?raw=1)
+
+### Original Approach
+
+The approach taken leans heavier on GCN influence by adding two more GCN paths which process the right/left hand coordinates extracted by mediapipe
+
+![New Architecture Diagram](https://github.com/sodonne6/EEP55C34_Advanced_AI/blob/main/project_notes/signformer_architecture.png?raw=1)
+
 
 ## Datasets
+
+How2Sign
 
 ## Team Members
 
