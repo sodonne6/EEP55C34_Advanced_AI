@@ -34,7 +34,7 @@ from fairseq.data.sign_language import SignFeatsType
 from fairseq.dataclass import FairseqDataclass
 from fairseq.dataclass.constants import ChoiceEnum
 
-from fairseq.models.sign_to_text.sgcn_lstm import Sgcn_Lstm   # fariya
+from fairseq.models.sign_to_text.graph import Graph
 from fairseq.models.sign_to_text.dim_reduction import (
     DimensionReductionLayerLinear,
     DimensionReductionLayerLSTM,
@@ -56,6 +56,95 @@ from fairseq.modules import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class StableSgcnLayer(nn.Module):
+    """SGCN block with persistent registered parameters."""
+
+    def __init__(self, ad: torch.Tensor, ad2: torch.Tensor, in_channels: int):
+        super().__init__()
+        self.register_buffer("ad", ad.float())
+        self.register_buffer("ad2", ad2.float())
+
+        self.conv_t = nn.Conv2d(in_channels, 64, kernel_size=(9, 1), padding=(4, 0))
+        self.conv_x = nn.Conv2d(in_channels + 64, 64, kernel_size=(1, 1))
+        self.conv_y = nn.Conv2d(in_channels + 64, 64, kernel_size=(1, 1))
+
+        self.conv_z1 = nn.Conv2d(128, 16, kernel_size=(9, 1), padding=(4, 0))
+        self.conv_z2 = nn.Conv2d(16, 16, kernel_size=(15, 1), padding=(7, 0))
+        self.conv_z3 = nn.Conv2d(16, 16, kernel_size=(19, 1), padding=(9, 0))
+        self.dropout = nn.Dropout2d(p=0.25)
+
+    def forward(self, x):
+        k1 = torch.relu(self.conv_t(x))
+        k = torch.cat((x, k1), dim=1)
+
+        x1 = torch.relu(self.conv_x(k))
+        gcn_x1 = torch.einsum("vw,ncwt->ncvt", self.ad.to(x.device), x1)
+
+        y1 = torch.relu(self.conv_y(k))
+        gcn_y1 = torch.einsum("vw,ncwt->ncvt", self.ad2.to(x.device), y1)
+
+        gcn_1 = torch.cat((gcn_x1, gcn_y1), dim=1)
+
+        z1 = self.dropout(torch.relu(self.conv_z1(gcn_1)))
+        z2 = self.dropout(torch.relu(self.conv_z2(z1)))
+        z3 = self.dropout(torch.relu(self.conv_z3(z2)))
+
+        return torch.cat((z1, z2, z3), dim=1)
+
+
+class StableSgcnLstm(nn.Module):
+    """Stable pose SGCN + 3-layer LSTM with registered trainable params."""
+
+    def __init__(self, num_joints: int, ad: torch.Tensor, ad2: torch.Tensor):
+        super().__init__()
+        self.output_dim = 256
+
+        self.sgcn_1 = StableSgcnLayer(ad, ad2, in_channels=3)
+        self.sgcn_2 = StableSgcnLayer(ad, ad2, in_channels=48)
+        self.sgcn_3 = StableSgcnLayer(ad, ad2, in_channels=48)
+
+        self.lstm_1 = nn.LSTM(
+            input_size=48 * num_joints,
+            hidden_size=128,
+            num_layers=1,
+            batch_first=True,
+            dropout=0.0,
+            bidirectional=False,
+        )
+        self.lstm_2 = nn.LSTM(
+            input_size=128,
+            hidden_size=256,
+            num_layers=1,
+            batch_first=True,
+            dropout=0.0,
+            bidirectional=False,
+        )
+        self.lstm_3 = nn.LSTM(
+            input_size=256,
+            hidden_size=256,
+            num_layers=1,
+            batch_first=True,
+            dropout=0.0,
+            bidirectional=False,
+        )
+
+    def forward(self, x):
+        # x: (B, 3, W, T)
+        x = self.sgcn_1(x)
+        y = self.sgcn_2(x)
+        y = y + x
+        z = self.sgcn_3(y)
+        z = z + y
+
+        b, c, w, t = z.shape
+        seq = z.permute(0, 3, 1, 2).contiguous().view(b, t, c * w)
+
+        rec, _ = self.lstm_1(seq)
+        rec1, _ = self.lstm_2(rec)
+        rec2, _ = self.lstm_3(rec1)
+        return rec2
 
 
 @dataclass
@@ -212,8 +301,9 @@ class Sign2TextTransformerEncoder(FairseqEncoder):
         self.transformer_layers = nn.ModuleList([TransformerEncoderLayer(cfg) for _ in range(cfg.encoder_layers)])
         self.layer_norm = LayerNorm(cfg.encoder_embed_dim) if cfg.encoder_normalize_before else None
 
-        # sgcn branch
-        self.encoder2 = Sgcn_Lstm()
+        # sgcn branch with persistent registered params
+        pose_graph = Graph(33)
+        self.encoder2 = StableSgcnLstm(33, pose_graph.AD, pose_graph.AD2)
 
         # ✅ NEW: fusion projection (concat 256+256=512 -> back to 256)
         self.fuse_proj = nn.Linear(cfg.encoder_embed_dim * 2, cfg.encoder_embed_dim)
