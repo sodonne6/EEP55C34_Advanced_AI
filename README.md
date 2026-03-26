@@ -2,7 +2,8 @@
 
 ## ASL to Speech - Group Project
 
-This model intends to convert Continious ASL to Synthesised Speech
+Develop real-time application that translates American Sign Language (ASL) into spoken and written language, enabling seamless communication between deaf and hearing individuals.
+
 
 ## Pipeline
 
