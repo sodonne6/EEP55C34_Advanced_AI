@@ -4,6 +4,7 @@ import os
 import threading
 from collections import deque
 from pathlib import Path
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -12,6 +13,58 @@ from flask import Flask, Response, jsonify, render_template_string
 import mediapipe as mp
 
 app = Flask(__name__)
+
+# ---------------------------------------------------------------------
+# Repo-relative path helpers
+# ---------------------------------------------------------------------
+SRC_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SRC_DIR.parent
+
+DEFAULT_PATHS = {
+    "SLT_REPO_ROOT": PROJECT_ROOT / "SLT" / "external" / "signformer_gcn" / "English" / "slt_how2sign_wicv2023",
+    "SLT_CKPT": PROJECT_ROOT / "ckpt" / "checkpoint.best_sacrebleu_6.5700.pt",
+    "SLT_SPM_MODEL": PROJECT_ROOT / "ckpt" / "spm" / "spm_bpe_7k.model",
+    "SLT_MODEL_PY": PROJECT_ROOT / "SLT" / "signformer_overrides" / "sign2text_transformer_3_gcn.py",
+    "SLT_GRAPH_PY": PROJECT_ROOT / "SLT" / "signformer_overrides" / "graph.py",
+}
+
+PLACEHOLDER_ENV_VALUES = {
+    "",
+    "PUT_YOUR_DATA_DIR_HERE",
+}
+
+
+def _resolve_repo_path(path_str: str) -> Path:
+    p = Path(path_str).expanduser()
+    if not p.is_absolute():
+        p = PROJECT_ROOT / p
+    return p.resolve()
+
+
+def _get_path(name: str, required: bool = True) -> Optional[Path]:
+    raw = os.environ.get(name, "").strip()
+
+    if raw in PLACEHOLDER_ENV_VALUES:
+        raw = ""
+
+    if raw:
+        path = _resolve_repo_path(raw)
+        if not path.exists():
+            raise FileNotFoundError(f"{name} does not exist: {path}")
+        return path
+
+    path = DEFAULT_PATHS.get(name)
+
+    if path is None:
+        if required:
+            raise RuntimeError(f"Missing required path for {name}")
+        return None
+
+    if not path.exists():
+        raise FileNotFoundError(f"{name} does not exist: {path}")
+
+    return path
+
 
 # ---------------------------------------------------------------------
 # Camera setup
@@ -226,15 +279,6 @@ class LiveHolisticOverlay:
 overlay_helper = LiveHolisticOverlay() if DRAW_LANDMARKS else None
 
 
-def _get_env_path(name: str, required: bool = True) -> Path | None:
-    value = os.environ.get(name, "").strip()
-    if not value:
-        if required:
-            raise RuntimeError(f"Missing required environment variable: {name}")
-        return None
-    return Path(value)
-
-
 def _resize_for_recording(frame_bgr: np.ndarray) -> np.ndarray:
     h, w = frame_bgr.shape[:2]
     max_side = max(h, w)
@@ -263,17 +307,25 @@ def get_translator():
         raise RuntimeError(translator_error)
 
     try:
-        repo_root = _get_env_path("SLT_REPO_ROOT")
-        ckpt = _get_env_path("SLT_CKPT")
-        spm_model = _get_env_path("SLT_SPM_MODEL")
-        data_dir = _get_env_path("SLT_DATA_DIR")
+        repo_root = _get_path("SLT_REPO_ROOT")
+        ckpt = _get_path("SLT_CKPT")
+        spm_model = _get_path("SLT_SPM_MODEL")
+        data_dir = _get_path("SLT_DATA_DIR", required=False)
 
-        model_py = _get_env_path("SLT_MODEL_PY")
-        graph_py = _get_env_path("SLT_GRAPH_PY")
+        model_py = _get_path("SLT_MODEL_PY")
+        graph_py = _get_path("SLT_GRAPH_PY")
 
         device = os.environ.get("SLT_DEVICE", "cpu")
         max_input_frames = int(os.environ.get("SLT_MAX_INPUT_FRAMES", "64"))
         min_input_frames = int(os.environ.get("SLT_MIN_INPUT_FRAMES", "24"))
+
+        print(f"[info] PROJECT_ROOT: {PROJECT_ROOT}", flush=True)
+        print(f"[info] SLT_REPO_ROOT: {repo_root}", flush=True)
+        print(f"[info] SLT_CKPT: {ckpt}", flush=True)
+        print(f"[info] SLT_SPM_MODEL: {spm_model}", flush=True)
+        print(f"[info] SLT_DATA_DIR: {data_dir if data_dir is not None else '[auto minimal task dir]'}", flush=True)
+        print(f"[info] SLT_MODEL_PY: {model_py}", flush=True)
+        print(f"[info] SLT_GRAPH_PY: {graph_py}", flush=True)
 
         from inference_slt_i3d_3gcn_demo import SignLanguageTranslatorI3D3GCNDemo
 
