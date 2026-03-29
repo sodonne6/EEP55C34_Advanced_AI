@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import threading
 import traceback
 from collections import deque
@@ -8,10 +9,9 @@ from pathlib import Path
 from typing import Optional
 
 import cv2
+import mediapipe as mp
 import numpy as np
 from flask import Flask, Response, jsonify, render_template_string, send_from_directory
-
-import mediapipe as mp
 
 app = Flask(__name__)
 
@@ -193,10 +193,24 @@ HTML = """
   <script>
     let ctrlPressed = false;
 
+    function clearAudio() {
+      const player = document.getElementById("ttsPlayer");
+      try {
+        player.pause();
+      } catch (_) {}
+      player.removeAttribute("src");
+      player.load();
+    }
+
     async function toggleRecording() {
       const res = await fetch("/toggle_recording", { method: "POST" });
       const data = await res.json();
       updateStatus(data);
+
+      if (data.is_recording) {
+        clearAudio();
+        return;
+      }
 
       if (data.audio_url) {
         playAudio(data.audio_url);
@@ -356,6 +370,18 @@ def _is_speakable_text(text: str) -> bool:
     return True
 
 
+def _normalize_transcript_text(text: str) -> str:
+    text = " ".join(str(text).split()).strip()
+
+    if not text:
+        return text
+    if text.startswith("[error]") or text.startswith("[info]"):
+        return text
+
+    text = re.sub(r"(?<=\w)\s+'\s+(?=\w)", "'", text)
+    return text
+
+
 def get_translator():
     global translator, translator_error
 
@@ -416,7 +442,6 @@ def get_tts_engine():
         raise RuntimeError(tts_error)
 
     try:
-        # lazy import so Flask can still start even if TTS deps are broken
         from synthesize import SpeechT5TTSEngine
 
         tts_device = os.environ.get("SLT_TTS_DEVICE", "cpu")
@@ -447,7 +472,8 @@ def run_inference_on_frames(frames) -> str:
         tr = get_translator()
         beam = int(os.environ.get("SLT_BEAM", "3"))
         max_len_b = int(os.environ.get("SLT_MAX_LEN_B", "32"))
-        return tr.translate_frames(arr, beam=beam, max_len_b=max_len_b)
+        text = tr.translate_frames(arr, beam=beam, max_len_b=max_len_b)
+        return _normalize_transcript_text(text)
 
     except Exception as e:
         return f"[error] inference failed: {type(e).__name__}: {e}"
@@ -527,15 +553,17 @@ def toggle_recording():
             recorded_frames.clear()
             record_counter = 0
             last_transcript = "Recording started..."
+            last_audio_url = ""
             last_audio_error = ""
             audio_busy = False
+
             return jsonify({
                 "is_recording": True,
                 "transcript": last_transcript,
                 "error": False,
-                "audio_url": last_audio_url,
-                "audio_error": last_audio_error,
-                "audio_busy": audio_busy,
+                "audio_url": "",
+                "audio_error": "",
+                "audio_busy": False,
             })
 
         frames = list(recorded_frames)
@@ -544,6 +572,8 @@ def toggle_recording():
         transcript = "[info] no frames captured."
     else:
         transcript = run_inference_on_frames(frames)
+
+    transcript = _normalize_transcript_text(transcript)
 
     with lock:
         last_transcript = transcript
@@ -554,7 +584,6 @@ def toggle_recording():
             audio_busy = False
             last_audio_url = ""
 
-    audio_url = ""
     if _is_speakable_text(transcript) and ENABLE_TTS:
         try:
             audio_url = synthesize_audio_for_text(transcript)
