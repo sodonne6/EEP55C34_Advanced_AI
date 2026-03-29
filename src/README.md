@@ -99,3 +99,69 @@ To deactivate:
 ```bash
 conda deactivate
 ```
+
+## Running System End-to-End
+
+Once the `signformer` environment is installed, you can launch the full demo application from PowerShell with the following steps.
+
+### 1. Activate the environment and go to the project root
+
+```powershell
+conda activate signformer
+cd path\to\your\root\
+```
+
+### 2. Clear any outdated overrides
+
+```powershell
+Remove-Item Env:SLT_DATA_DIR -ErrorAction SilentlyContinue
+```
+
+### 3. Set runtime options
+
+```powershell
+$env:SLT_DEVICE="cpu"
+$env:SLT_BEAM="1"
+$env:SLT_MAX_LEN_B="24"
+$env:SLT_RECORD_MAX_FRAMES="60"
+$env:SLT_RECORD_EVERY_N="3"
+$env:SLT_STORE_MAX_SIDE="224"
+$env:SLT_PRESTACK_MAX_FRAMES="32"
+$env:SLT_MAX_INPUT_FRAMES="32"
+$env:SLT_MIN_INPUT_FRAMES="16"
+$env:SLT_DRAW_LANDMARKS="1"
+$env:SLT_ENABLE_TTS="1"
+$env:SLT_TTS_DEVICE="cpu"
+$env:SLT_TTS_SPEAKER_ID="7306"
+```
+
+### 4. Run the application
+
+```powershell
+python -u .\src\app_preview_demo.py
+```
+
+## Full Launch Script - Change to directory path
+
+```powershell
+conda activate signformer
+cd "C:\Users\irish\Computer_Electronic_Engineering_Year5\semester_2\Advanced_AI\project"
+
+Remove-Item Env:SLT_DATA_DIR -ErrorAction SilentlyContinue
+
+$env:SLT_DEVICE="cpu"
+$env:SLT_BEAM="1"
+$env:SLT_MAX_LEN_B="24"
+$env:SLT_RECORD_MAX_FRAMES="60"
+$env:SLT_RECORD_EVERY_N="3"
+$env:SLT_STORE_MAX_SIDE="224"
+$env:SLT_PRESTACK_MAX_FRAMES="32"
+$env:SLT_MAX_INPUT_FRAMES="32"
+$env:SLT_MIN_INPUT_FRAMES="16"
+$env:SLT_DRAW_LANDMARKS="1"
+$env:SLT_ENABLE_TTS="1"
+$env:SLT_TTS_DEVICE="cpu"
+$env:SLT_TTS_SPEAKER_ID="7306"
+
+python -u .\src\app_preview_demo.py
+```
