@@ -43,6 +43,18 @@ Clone Submodules
 git submodule update --init --recursive
 ```
 
+## Repository guide
+
+This repository contains both the runtime demo code and the training framework used during development.
+
+- See **`src/README.md`** for environment setup and instructions on running the application end-to-end.
+- See **`SLT/external/README.md`** for training-related notes, including the original SignFormer GCN reference repo, required override files, and the training launch workflow.
+
+Recommended starting points:
+
+- **Running the system:** `src/README.md`
+- **Training a new model:** `SLT/external/README.md`
+
 ## References
 
 [1] S. H. Arib, R. Akter, S. Rahman, and S. Rahman, "SignFormer-GCN: Continuous sign language translation using spatio-temporal graph convolutional networks," PLoS ONE, vol. 20, no. 2, p. e0316298, Feb. 2025, doi: 10.1371/journal.pone.0316298.

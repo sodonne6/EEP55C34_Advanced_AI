@@ -17,47 +17,67 @@ dependencies:
   # Core
   - numpy=1.24.4
   - pandas=1.4.3
-  - scipy
+  - scipy=1.10.1
   - tqdm=4.64.0
-  - pyyaml
+  - pyyaml=6.0.2
   - h5py=3.7.0
   - ffmpeg=4.4.2
-  - cython
+  - cython=3.0.11
+  - setuptools=75.3.0
+  - wheel=0.45.1
 
-  # Nice-to-haves (optional)
+  # Nice-to-haves
   - jupyterlab=3.4.4
 
   - pip:
-      # Hydra/OmegaConf pinned like your runs
+      # Hydra / config
       - hydra-core==1.1.0
       - omegaconf==2.1.2
 
-      # Tokenization / eval
+      # Tokenization / eval / logging
       - sentencepiece==0.1.96
       - sacrebleu==2.3.1
       - sacremoses==0.0.53
       - tensorboardx==2.5.1
       - wandb==0.12.21
 
-      # Common deps seen in this repo
-      - einops
-      - msgpack
-      - nltk
-      - soundfile
-      - fairscale
-      - bitarray
+      # Common deps used in this repo
+      - einops==0.8.1
+      - msgpack==1.1.1
+      - nltk==3.9.1
+      - soundfile==0.13.1
+      - sounddevice==0.5.5
+      - fairscale==0.4.13
+      - bitarray==3.8.0
       - pose-format==0.1.0
       - srt==3.5.2
       - pandarallel==1.6.1
-      - truecase
+      - truecase==0.0.14
+
+      # Web app runtime
+      - flask==3.0.3
+      - blinker==1.8.2
+      - click==8.1.8
+      - itsdangerous==2.2.0
+      - werkzeug==3.0.6
 
       # MediaPipe stack (keep these strict)
       - mediapipe==0.10.11
       - protobuf==3.20.1
       - opencv-contrib-python==4.13.0.92
       - matplotlib==3.7.5
-      - flatbuffers
-      - attrs
+      - flatbuffers==25.12.19
+      - attrs==25.3.0
 
-      # IMPORTANT: do NOT install pip fairseq here
+      # Hugging Face / model loading runtime
+      - transformers==4.38.2
+      - tokenizers==0.15.2
+      - huggingface-hub==0.36.2
+      - safetensors==0.5.3
+      - filelock==3.16.1
+      - regex==2024.11.6
+
+      # IMPORTANT:
+      # Do NOT install pip fairseq here if this project relies on a local fork
+      # or a repo-specific editable install step.
       # - fairseq
