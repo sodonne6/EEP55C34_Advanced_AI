@@ -1,9 +1,8 @@
 # SignFormer Environment Setup Guide
 
-This setup guide follows the installation of the dependencies needed for the system. 
-Conda is needed to install env using the provided yml
+This setup guide covers both the provided Conda environment and a pip-based setup for users who do not use Conda.
 
-## Environment File
+## Conda Environment File
 
 Use the repository's `signformer_environment.yml` file:
 
@@ -12,12 +11,22 @@ conda env create -f signformer_environment.yml
 conda activate signformer
 ```
 
+## Non-Conda Environment File
+
+If you are using `venv`, `virtualenv`, `uv`, Poetry, or plain `pip`, use the pinned requirements file:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r signformer_pip_requirements.txt
+```
+
+If you do not have CUDA 11.3, replace the PyTorch line(s) in that file with the wheel set that matches your platform.
+This file is not a macOS-ready install file as written, because it is pinned to CUDA-based PyTorch wheels and the project should use a separate mac-specific requirements file if mac support is needed.
+
 ## Post-installation Verification
 
 ```bash
-
-conda activate signformer
-
 python -c "
 import torch
 import torchvision
