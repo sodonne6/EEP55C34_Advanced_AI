@@ -21,6 +21,23 @@ python -m venv .venv
 pip install -r signformer_pip_requirements.txt
 ```
 
+For `uv`, install and use Python 3.8 explicitly, then install the same requirements file:
+
+```bash
+uv python install 3.8.20
+uv venv --python 3.8.20 .venv
+.\.venv\Scripts\activate
+uv pip install -r signformer_pip_requirements.txt
+```
+
+On Linux or WSL, use the Linux-specific file instead:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r signformer_linux_requirements.txt
+```
+
 If you do not have CUDA 11.3, replace the PyTorch line(s) in that file with the wheel set that matches your platform.
 This file is not a macOS-ready install file as written, because it is pinned to CUDA-based PyTorch wheels and the project should use a separate mac-specific requirements file if mac support is needed.
 
