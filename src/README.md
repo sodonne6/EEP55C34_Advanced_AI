@@ -13,7 +13,9 @@ conda activate signformer
 
 ## Non-Conda Environment File
 
-If you are using `venv`, `virtualenv`, `uv`, Poetry, or plain `pip`, use the pinned requirements file:
+Choose based on your hardware and OS:
+
+### Windows with NVIDIA GPU (CUDA 11.3)
 
 ```bash
 python -m venv .venv
@@ -21,7 +23,7 @@ python -m venv .venv
 pip install -r signformer_pip_requirements.txt
 ```
 
-For `uv`, install and use Python 3.8 explicitly, then install the same requirements file:
+For `uv`, install and use Python 3.8 explicitly:
 
 ```bash
 uv python install 3.8.20
@@ -30,7 +32,28 @@ uv venv --python 3.8.20 .venv
 uv pip install -r signformer_pip_requirements.txt
 ```
 
-On Linux or WSL, use the Linux-specific file instead:
+### Windows without GPU (CPU-only)
+
+For machines without NVIDIA GPUs, use the CPU-only variant (slower but works):
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r signformer_pip_requirements_cpu.txt
+```
+
+With `uv`:
+
+```bash
+uv python install 3.8.20
+uv venv --python 3.8.20 .venv
+.\.venv\Scripts\activate
+uv pip install -r signformer_pip_requirements_cpu.txt
+```
+
+### Linux / WSL (CPU-only)
+
+Linux and WSL use CPU-only PyTorch wheels by default (GPU support requires additional CUDA setup):
 
 ```bash
 python3 -m venv .venv
@@ -38,8 +61,10 @@ python3 -m venv .venv
 pip install -r signformer_linux_requirements.txt
 ```
 
-If you do not have CUDA 11.3, replace the PyTorch line(s) in that file with the wheel set that matches your platform.
-This file is not a macOS-ready install file as written, because it is pinned to CUDA-based PyTorch wheels and the project should use a separate mac-specific requirements file if mac support is needed.
+### macOS
+
+Not yet supported with current pinned packages. A separate macOS requirements file would be needed.
+
 
 ## Post-installation Verification
 
@@ -70,10 +95,12 @@ print('✓ NLTK data downloaded')
 
 ## Important Notes
 - Python 3.8 is required.
+- GPU variant uses CUDA 11.3 PyTorch wheels; CPU variant uses CPU-only wheels.
+- CPU-only runs slower but is compatible with any machine without GPU hardware.
 - Keep these package versions pinned:
-- mediapipe==0.10.11
-- protobuf==3.20.1
-- opencv-contrib-python==4.13.0.92
+  - mediapipe==0.10.11
+  - protobuf==3.20.1
+  - opencv-contrib-python==4.10.0.84 (CPU and Linux variants) or 4.13.0.92 (GPU variant)
 - The verified demo setup does not require fairseq to be installed as a standalone pip package.
 - The demo resolves the main repo paths automatically when the repository layout is unchanged.
 
