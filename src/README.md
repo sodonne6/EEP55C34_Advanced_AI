@@ -2,6 +2,11 @@
 
 This setup guide covers both the provided Conda environment and a pip-based setup for users who do not use Conda.
 
+```bash
+cd into/src/folder
+```
+
+
 ## Conda Environment File
 
 Use the repository's `signformer_environment.yml` file:
