@@ -34,7 +34,7 @@ Clone repo locally or in colab
 
 ```bash
 git clone --recurse-submodules https://github.com/sodonne6/EEP55C34_Advanced_AI.git
-cd EEP55C34_Advanced_AI/project
+cd \inside\repo\root
 ```
 
 Clone Submodules
