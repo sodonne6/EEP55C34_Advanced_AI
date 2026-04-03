@@ -24,7 +24,8 @@ python3.8 --version
 ```
 
 If not installed or you see an error, install it:
-- **Windows**: Download from [python.org/downloads/release/python-3820/](https://www.python.org/downloads/release/python-3820/) or use `uv python install 3.8.20`
+- **Windows**: Download from [python.org/downloads/release/python-3820/](https://www.python.org/downloads/release/python-3820/) or use `uv python install 3.8.20` or use `winget install Python.Python.3.8`
+
 - **Linux (Ubuntu/Debian)**: `sudo apt-get update && sudo apt-get install python3.8 python3.8-venv`
 - **Linux (Fedora/RHEL)**: `sudo dnf install python3.8`
 - **macOS**: `brew install python@3.8`
