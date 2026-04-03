@@ -11,19 +11,58 @@ conda env create -f signformer_environment.yml
 conda activate signformer
 ```
 
+## Python Version Requirements
+
+**IMPORTANT: Python 3.8 is required** for all non-Conda installations.
+
+### Step 1: Verify/Install Python 3.8
+
+First, check if you have Python 3.8 installed:
+
+```bash
+python3.8 --version
+```
+
+If not installed or you see an error, install it:
+- **Windows**: Download from [python.org/downloads/release/python-3820/](https://www.python.org/downloads/release/python-3820/) or use `uv python install 3.8.20`
+- **Linux (Ubuntu/Debian)**: `sudo apt-get update && sudo apt-get install python3.8 python3.8-venv`
+- **Linux (Fedora/RHEL)**: `sudo dnf install python3.8`
+- **macOS**: `brew install python@3.8`
+
+### Step 2: Verify the installation
+
+Run the version check script:
+
+```bash
+python3.8 check_python_version.py
+```
+
+Expected output:
+```
+Current Python version: 3.8.20
+✅ Python 3.8 is compatible
+
+You can now run:
+   pip install -r signformer_pip_requirements.txt
+```
+
+If you see `python3.8: command not found`, Python 3.8 is not installed. Follow the install instructions above and try again.
+
 ## Non-Conda Environment File
 
-Choose based on your hardware and OS:
+Choose based on your hardware and OS. After choosing, **first verify Python 3.8 is installed** using the steps above.
 
 ### Windows with NVIDIA GPU (CUDA 11.3)
 
+**Requires Python 3.8. After installing Python 3.8, run:**
+
 ```bash
-python -m venv .venv
+python3.8 -m venv .venv
 .venv\Scripts\activate
 pip install -r signformer_pip_requirements.txt
 ```
 
-For `uv`, install and use Python 3.8 explicitly:
+Alternatively, use `uv` to handle Python version automatically:
 
 ```bash
 uv python install 3.8.20
@@ -34,15 +73,15 @@ uv pip install -r signformer_pip_requirements.txt
 
 ### Windows without GPU (CPU-only)
 
-For machines without NVIDIA GPUs, use the CPU-only variant (slower but works):
+**Requires Python 3.8. After installing Python 3.8, run:**
 
 ```bash
-python -m venv .venv
+python3.8 -m venv .venv
 .venv\Scripts\activate
 pip install -r signformer_pip_requirements_cpu.txt
 ```
 
-With `uv`:
+Alternatively, use `uv`:
 
 ```bash
 uv python install 3.8.20
@@ -53,17 +92,13 @@ uv pip install -r signformer_pip_requirements_cpu.txt
 
 ### Linux / WSL (CPU-only)
 
-Linux and WSL use CPU-only PyTorch wheels by default (GPU support requires additional CUDA setup):
+**Requires Python 3.8+. After installing Python 3.8 (see above), run:**
 
 ```bash
-python3 -m venv .venv
+python3.8 -m venv .venv
 . .venv/bin/activate
 pip install -r signformer_linux_requirements.txt
 ```
-
-### macOS
-
-Not yet supported with current pinned packages. A separate macOS requirements file would be needed.
 
 
 ## Post-installation Verification
