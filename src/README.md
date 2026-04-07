@@ -16,6 +16,29 @@ conda env create -f signformer_environment.yml
 conda activate signformer
 ```
 
+## Windows Prerequisite (Important for PyTorch)
+
+On Windows, install **Microsoft Visual C++ Redistributable 2015-2022 (x64)** before running the app.
+
+- x86 only is not sufficient for this project.
+- Missing x64 runtime can cause:
+  - `OSError: [WinError 182] ... torch\\lib\\shm.dll` when recording/inference starts.
+
+Install link:
+- https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+Optional (PowerShell with winget):
+
+```powershell
+winget install Microsoft.VCRedist.2015+.x64
+```
+
+After install, restart terminal/session and re-run:
+
+```powershell
+python -c "import torch; print(torch.__version__)"
+```
+
 ## Python Version Requirements
 
 **IMPORTANT: Python 3.8 is required** for all non-Conda installations.
@@ -136,6 +159,8 @@ print('✓ NLTK data downloaded')
 
 ## Important Notes
 - Python 3.8 is required.
+- Conda setup already installs Python 3.8 from `signformer_environment.yml`; global Python 3.8 is only required for non-Conda (`venv`) setup.
+- On Windows, ensure Microsoft VC++ 2015-2022 **x64** runtime is installed (x86-only installs can fail when loading PyTorch DLLs).
 - GPU variant uses CUDA 11.3 PyTorch wheels; CPU variant uses CPU-only wheels.
 - CPU-only runs slower but is compatible with any machine without GPU hardware.
 - Keep these package versions pinned:
