@@ -3,6 +3,9 @@
 # Intended for Linux/WSL environments managed with venv, virtualenv, uv,
 # Poetry, or plain pip. This file uses CPU PyTorch wheels so it works on a
 # typical Linux machine without requiring a CUDA toolchain.
+#
+# PYTHON VERSION: 3.8+ recommended (tested with Python 3.10.12 on WSL).
+# Install with: python3 -m pip install -r signformer_linux_requirements.txt
 
 --extra-index-url https://download.pytorch.org/whl/cpu
 

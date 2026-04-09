@@ -1,0 +1,11 @@
+name: signformer
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8.20
+  - pip=22.2.2
+  - setuptools
+  - wheel
+  - pip:
+      - -r signformer_pip_requirements_cpu.txt

@@ -9,12 +9,40 @@ cd into/src/folder
 
 ## Conda Environment File
 
+### Windows/Linux with NVIDIA GPU (CUDA 11.3)
+
 Use the repository's `signformer_environment.yml` file:
 
 ```bash
 conda env create -f signformer_environment.yml
 conda activate signformer
 ```
+
+### Windows CPU-only (no NVIDIA GPU)
+
+Use the CPU-friendly Windows Conda file `signformer_environment_cpu_windows.yml`.
+It uses the same Conda environment name (`signformer`).
+
+If you already have a GPU `signformer` env and want to switch to CPU-only, remove it first:
+
+```bash
+conda env remove -n signformer
+```
+
+Create and activate the CPU environment:
+
+```bash
+conda env create -f signformer_environment_cpu_windows.yml
+conda activate signformer
+```
+
+Quick CPU check:
+
+```bash
+python -c "import torch; print(torch.__version__); print('CUDA available:', torch.cuda.is_available())"
+```
+
+Expected: `CUDA available: False`
 
 ## Windows Prerequisite (Important for PyTorch)
 
